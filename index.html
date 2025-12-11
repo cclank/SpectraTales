@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SpectraTales - Magic Story Maker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Nunito', 'sans-serif'], // Rounder, friendlier sans
+              display: ['Fredoka', 'sans-serif'], // Very round headings
+            },
+            colors: {
+              fun: {
+                bg: '#FFFBF0', // Warm Cream
+                yellow: '#FFD93D',
+                orange: '#FFAA4C',
+                blue: '#6BCB77', // Actually Green in name, fixing below
+                sky: '#4D96FF',
+                pink: '#FF6B6B',
+                purple: '#9B72AA',
+                mint: '#6BCB77',
+              },
+              brand: { // Keep for backward compat if needed, mapped to fun colors
+                50: '#F0F9FF',
+                100: '#E0F2FE',
+                500: '#4D96FF',
+                600: '#2563EB',
+                900: '#1E3A8A',
+              }
+            },
+            boxShadow: {
+              'comic': '4px 4px 0px 0px rgba(0,0,0,0.15)',
+              'comic-hover': '6px 6px 0px 0px rgba(0,0,0,0.15)',
+              'comic-active': '2px 2px 0px 0px rgba(0,0,0,0.15)',
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        font-family: 'Nunito', sans-serif;
+        background-color: #FFFBF0;
+        /* Playful Polka Dot Pattern */
+        background-image: radial-gradient(#FFD93D 3px, transparent 3px), radial-gradient(#4D96FF 3px, transparent 3px);
+        background-size: 50px 50px;
+        background-position: 0 0, 25px 25px;
+      }
+      h1, h2, h3, h4, button {
+        font-family: 'Fredoka', sans-serif;
+      }
+      
+      /* Cute Scrollbar */
+      ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #FFF5D0;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #FFAA4C;
+        border-radius: 5px;
+        border: 2px solid #FFF5D0;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.1/",
+    "react": "https://esm.sh/react@^19.2.1",
+    "lucide-react": "https://esm.sh/lucide-react@^0.559.0",
+    "@google/genai": "https://esm.sh/@google/genai@^1.33.0",
+    "jspdf": "https://esm.sh/jspdf@^3.0.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.1/"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
