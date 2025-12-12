@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
-import { TEMPLATES, VisualComplexity, StoryMode, StoryboardData } from '../types';
-import { Wand2, BookOpen, PenTool, Star, Zap, Layout, Sparkles, Library, ArrowRight, History, Calendar, Clock } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { TEMPLATES, VisualComplexity, StoryMode, StoryboardData, Gender } from '../types';
+import { Wand2, BookOpen, PenTool, Star, Zap, Layout, Sparkles, Library, ArrowRight, History, Calendar, Smile, User } from 'lucide-react';
 
 interface Props {
-  onGenerate: (text: string, complexity: VisualComplexity) => void;
+  onGenerate: (text: string, complexity: VisualComplexity, gender: Gender) => void;
   isLoading: boolean;
   history?: StoryboardData[];
   onSelectHistory?: (story: StoryboardData) => void;
@@ -65,6 +65,9 @@ const StoryInput: React.FC<Props> = ({ onGenerate, isLoading, history = [], onSe
   const [customText, setCustomText] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState(TEMPLATES[0]);
   const [complexity, setComplexity] = useState<VisualComplexity>(VisualComplexity.BALANCED);
+  const [gender, setGender] = useState<Gender>('boy');
+  
+  const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
   // Emojis mapping for templates
   const getTemplateIcon = (id: string) => {
@@ -76,10 +79,19 @@ const StoryInput: React.FC<Props> = ({ onGenerate, isLoading, history = [], onSe
     }
   };
 
+  const handleModeChange = (newMode: StoryMode) => {
+    setMode(newMode);
+    // If switching to Custom, focus the textarea after render
+    if (newMode === StoryMode.CUSTOM) {
+      setTimeout(() => textAreaRef.current?.focus(), 100);
+    }
+  };
+
   const handleSubmit = () => {
+    console.log("Submitting story...", { mode, customText, template: selectedTemplate.title });
     const text = mode === StoryMode.CUSTOM ? customText : selectedTemplate.text;
     if (!text.trim()) return;
-    onGenerate(text, complexity);
+    onGenerate(text, complexity, gender);
   };
 
   const handleLoadShowcase = (example: typeof SHOWCASE_EXAMPLES[0]) => {
@@ -119,48 +131,48 @@ const StoryInput: React.FC<Props> = ({ onGenerate, isLoading, history = [], onSe
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <button
-              onClick={() => setMode(StoryMode.TEMPLATE)}
-              className={`relative p-6 rounded-3xl border-4 text-left transition-all transform hover:-translate-y-1 ${
+              onClick={() => handleModeChange(StoryMode.TEMPLATE)}
+              className={`relative p-6 rounded-3xl border-4 text-left transition-all transform ${
                 mode === StoryMode.TEMPLATE
-                  ? 'bg-white border-fun-sky shadow-comic'
-                  : 'bg-white border-slate-200 hover:border-fun-sky/50'
+                  ? 'bg-white border-fun-sky shadow-comic scale-[1.02] z-10'
+                  : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-white hover:border-fun-sky/50'
               }`}
             >
-              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-4 ${mode === StoryMode.TEMPLATE ? 'bg-fun-sky text-white' : 'bg-slate-100 text-slate-400'}`}>
+              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-4 ${mode === StoryMode.TEMPLATE ? 'bg-fun-sky text-white' : 'bg-slate-200 text-slate-400'}`}>
                 <BookOpen size={28} strokeWidth={2.5} />
               </div>
-              <h3 className="text-xl font-bold text-slate-800 mb-1">Pick a Topic</h3>
-              <p className="text-sm text-slate-500 font-bold">Use our ready-made themes like sharing, waiting, or greeting.</p>
+              <h3 className={`text-xl font-bold mb-1 ${mode === StoryMode.TEMPLATE ? 'text-slate-800' : 'text-slate-500'}`}>Pick a Topic</h3>
+              <p className="text-sm font-bold opacity-80">Use our ready-made themes like sharing, waiting, or greeting.</p>
               {mode === StoryMode.TEMPLATE && <div className="absolute top-4 right-4 text-fun-sky"><Star size={24} fill="currentColor" /></div>}
             </button>
 
             <button
-              onClick={() => setMode(StoryMode.CUSTOM)}
-              className={`relative p-6 rounded-3xl border-4 text-left transition-all transform hover:-translate-y-1 ${
+              onClick={() => handleModeChange(StoryMode.CUSTOM)}
+              className={`relative p-6 rounded-3xl border-4 text-left transition-all transform ${
                 mode === StoryMode.CUSTOM
-                  ? 'bg-white border-fun-pink shadow-comic'
-                  : 'bg-white border-slate-200 hover:border-fun-pink/50'
+                  ? 'bg-white border-fun-pink shadow-comic scale-[1.02] z-10'
+                  : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-white hover:border-fun-pink/50'
               }`}
             >
-              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-4 ${mode === StoryMode.CUSTOM ? 'bg-fun-pink text-white' : 'bg-slate-100 text-slate-400'}`}>
+              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-4 ${mode === StoryMode.CUSTOM ? 'bg-fun-pink text-white' : 'bg-slate-200 text-slate-400'}`}>
                 <PenTool size={28} strokeWidth={2.5} />
               </div>
-              <h3 className="text-xl font-bold text-slate-800 mb-1">Write My Own</h3>
-              <p className="text-sm text-slate-500 font-bold">Paste a specific scenario or write a custom story text.</p>
+              <h3 className={`text-xl font-bold mb-1 ${mode === StoryMode.CUSTOM ? 'text-slate-800' : 'text-slate-500'}`}>Write My Own</h3>
+              <p className="text-sm font-bold opacity-80">Paste a specific scenario or write a custom story text.</p>
               {mode === StoryMode.CUSTOM && <div className="absolute top-4 right-4 text-fun-pink"><Star size={24} fill="currentColor" /></div>}
             </button>
           </div>
         </div>
 
         {/* Step 2: Input Content */}
-        <div className="p-6 md:p-8">
+        <div className="p-6 md:p-8 border-b-4 border-slate-100 relative">
            <label className="block text-xl font-display font-bold text-slate-700 mb-6 flex items-center gap-2">
             <span className="bg-fun-orange text-white w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-sm border-2 border-white">2</span>
             {mode === StoryMode.TEMPLATE ? 'Choose a Theme' : 'Type your Story'}
           </label>
 
           {mode === StoryMode.TEMPLATE ? (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-in fade-in duration-300">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {TEMPLATES.map((t) => (
                   <button
@@ -189,19 +201,63 @@ const StoryInput: React.FC<Props> = ({ onGenerate, isLoading, history = [], onSe
               </div>
             </div>
           ) : (
-            <textarea
-              value={customText}
-              onChange={(e) => setCustomText(e.target.value)}
-              placeholder="Start typing here... Example: 'Tom wants the toy train, but Sally is playing with it. Tom takes a deep breath and asks nicely...'"
-              className="w-full h-48 p-6 text-lg border-4 border-slate-200 rounded-3xl focus:border-fun-pink focus:ring-0 outline-none resize-none transition-all placeholder:text-slate-300 font-medium"
-            />
+            <div className="animate-in fade-in duration-300">
+              <textarea
+                ref={textAreaRef}
+                value={customText}
+                onChange={(e) => setCustomText(e.target.value)}
+                placeholder="Start typing here... Example: 'Tom wants the toy train, but Sally is playing with it. Tom takes a deep breath and asks nicely...'"
+                className="w-full h-48 p-6 text-lg border-4 border-slate-300 rounded-3xl bg-slate-50 focus:bg-white focus:border-fun-pink focus:ring-4 focus:ring-fun-pink/10 outline-none resize-none transition-all placeholder:text-slate-400 font-medium text-slate-800 caret-pink-500"
+              />
+              <div className="mt-2 text-right">
+                <span className={`text-sm font-bold ${!customText ? 'text-slate-400' : 'text-fun-pink'}`}>
+                  {customText.length > 0 ? 'Ready to go!' : 'Please enter your story text above'}
+                </span>
+              </div>
+            </div>
           )}
         </div>
 
-        {/* Step 3: Complexity */}
-        <div className="p-6 md:p-8 bg-slate-50 border-t-4 border-slate-100">
+        {/* Step 3: Main Character (New) */}
+        <div className="p-6 md:p-8 bg-slate-50 border-b-4 border-slate-100">
           <label className="block text-xl font-display font-bold text-slate-700 mb-6 flex items-center gap-2">
-            <span className="bg-fun-mint text-white w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-sm border-2 border-white">3</span>
+            <span className="bg-fun-pink text-white w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-sm border-2 border-white">3</span>
+            Who is the hero?
+          </label>
+          
+          <div className="flex gap-4">
+            <button
+              onClick={() => setGender('boy')}
+              className={`flex-1 p-4 rounded-2xl border-4 transition-all flex items-center justify-center gap-3 ${
+                gender === 'boy'
+                  ? 'bg-white border-blue-400 shadow-comic scale-[1.02] z-10'
+                  : 'bg-white border-slate-200 hover:border-blue-200'
+              }`}
+            >
+              <div className="text-3xl">👦</div>
+              <span className="font-bold text-lg text-slate-700">Boy</span>
+              {gender === 'boy' && <div className="text-blue-500"><Smile size={20} /></div>}
+            </button>
+            
+            <button
+              onClick={() => setGender('girl')}
+              className={`flex-1 p-4 rounded-2xl border-4 transition-all flex items-center justify-center gap-3 ${
+                gender === 'girl'
+                  ? 'bg-white border-pink-400 shadow-comic scale-[1.02] z-10'
+                  : 'bg-white border-slate-200 hover:border-pink-200'
+              }`}
+            >
+              <div className="text-3xl">👧</div>
+              <span className="font-bold text-lg text-slate-700">Girl</span>
+              {gender === 'girl' && <div className="text-pink-500"><Smile size={20} /></div>}
+            </button>
+          </div>
+        </div>
+
+        {/* Step 4: Complexity */}
+        <div className="p-6 md:p-8 bg-white border-t-4 border-slate-100">
+          <label className="block text-xl font-display font-bold text-slate-700 mb-6 flex items-center gap-2">
+            <span className="bg-fun-mint text-white w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-sm border-2 border-white">4</span>
             Choose Visual Style
           </label>
 
@@ -212,7 +268,7 @@ const StoryInput: React.FC<Props> = ({ onGenerate, isLoading, history = [], onSe
                 onClick={() => setComplexity(level)}
                 className={`p-4 rounded-2xl border-4 flex flex-col items-center transition-all ${
                   complexity === level
-                    ? 'bg-white border-fun-purple shadow-comic scale-[1.02] z-10'
+                    ? 'bg-fun-bg border-fun-purple shadow-comic scale-[1.02] z-10'
                     : 'bg-white border-slate-200 hover:border-fun-purple/50 opacity-70 hover:opacity-100'
                 }`}
               >
@@ -238,7 +294,7 @@ const StoryInput: React.FC<Props> = ({ onGenerate, isLoading, history = [], onSe
         <div className="p-6 md:p-8 border-t-4 border-slate-100 bg-white">
           <button
             onClick={handleSubmit}
-            disabled={isLoading || (mode === StoryMode.CUSTOM && !customText)}
+            disabled={isLoading || (mode === StoryMode.CUSTOM && !customText.trim())}
             className="w-full bg-fun-sky hover:bg-fun-sky/90 disabled:bg-slate-300 disabled:shadow-none disabled:translate-y-0 text-white font-display font-bold text-xl py-5 rounded-2xl shadow-comic hover:shadow-comic-hover active:shadow-comic-active active:translate-y-1 transition-all flex items-center justify-center space-x-3"
           >
             {isLoading ? (

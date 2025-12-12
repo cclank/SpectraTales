@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { StoryboardData, VisualComplexity, CharacterBlueprint } from "../types";
+import { StoryboardData, VisualComplexity, CharacterBlueprint, Gender } from "../types";
 
 // Note: API Key must be in process.env.API_KEY
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -12,7 +12,8 @@ const IMAGE_MODEL = "gemini-2.5-flash-image"; // Efficient image generation
  */
 export const generateStoryboard = async (
   storyText: string,
-  complexity: VisualComplexity
+  complexity: VisualComplexity,
+  gender: Gender
 ): Promise<StoryboardData> => {
   
   const complexityGuide = complexity === VisualComplexity.MINIMAL 
@@ -23,11 +24,16 @@ export const generateStoryboard = async (
     You are an expert Special Education teacher and illustrator. 
     Analyze the following story text and break it down into a visual storyboard suitable for a child with Autism Spectrum Disorder (ASD).
     
-    Story: "${storyText}"
+    Story to Visualize:
+    """
+    ${storyText}
+    """
+    
     Visual Complexity Level: ${complexity} (${complexityGuide})
+    Main Character Gender: ${gender}
 
     Task:
-    1. Extract a consistent main character "blueprint".
+    1. Extract a consistent main character "blueprint" (must be a young ${gender}).
     2. Break the story into 5-8 distinct pages (scenes).
     3. For each page, write the simple text for the child to read, and a precise visual description for an AI image generator.
     4. Ensure specific emotional cues and hand gestures are explicitly described in the action_description.

@@ -9,6 +9,8 @@ export enum StoryMode {
   TEMPLATE = 'Template'
 }
 
+export type Gender = 'boy' | 'girl';
+
 export interface CharacterBlueprint {
   age: number;
   hair: string;

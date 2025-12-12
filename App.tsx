@@ -3,10 +3,9 @@ import StoryInput from './components/StoryInput';
 import BookPreview from './components/BookPreview';
 import { generateStoryboard, generatePageImage } from './services/geminiService';
 import { generatePDF } from './utils/pdfGenerator';
-import { StoryboardData, VisualComplexity } from './types';
+import { StoryboardData, VisualComplexity, Gender } from './types';
 import { Sparkles, Heart } from 'lucide-react';
-
-const STORAGE_KEY = 'spectra_history';
+import { getHistoryFromDB, saveStoryToDB } from './services/storageService';
 
 const App: React.FC = () => {
   const [story, setStory] = useState<StoryboardData | null>(null);
@@ -14,59 +13,40 @@ const App: React.FC = () => {
   const [complexity, setComplexity] = useState<VisualComplexity>(VisualComplexity.BALANCED);
   const [history, setHistory] = useState<StoryboardData[]>([]);
 
-  // Load history on mount
+  // Load history from IndexedDB on mount
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        setHistory(JSON.parse(saved));
-      }
-    } catch (e) {
-      console.error("Failed to load history", e);
-    }
+    const loadHistory = async () => {
+      const saved = await getHistoryFromDB();
+      setHistory(saved);
+    };
+    loadHistory();
   }, []);
 
-  // Safe storage handler that manages quota limits
-  const saveToHistory = (newStory: StoryboardData, currentHistory: StoryboardData[]) => {
-    // Check if story already exists in history (update case)
-    let updatedHistory = currentHistory.some(h => h.uid === newStory.uid)
-      ? currentHistory.map(h => h.uid === newStory.uid ? newStory : h)
-      : [newStory, ...currentHistory];
-
-    setHistory(updatedHistory);
-
-    // Try saving to localStorage, pop oldest if quota exceeded
-    const trySave = (data: StoryboardData[]) => {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      } catch (e) {
-        if (e instanceof DOMException && (
-          e.name === 'QuotaExceededError' || 
-          e.name === 'NS_ERROR_DOM_QUOTA_REACHED')
-        ) {
-          if (data.length > 1) {
-            // Remove the last (oldest) item and try again
-            // We keep the first one (newest) at minimum
-            console.warn("Storage quota exceeded, removing oldest story");
-            trySave(data.slice(0, -1));
-            // Update state to match what is actually saved
-            setHistory(data.slice(0, -1));
-          } else {
-             console.error("Cannot save even one story, storage is full");
-          }
-        }
+  // Safe storage handler using IndexedDB
+  const saveToHistory = async (newStory: StoryboardData) => {
+    // Optimistically update local state for immediate UI feedback
+    setHistory(prev => {
+      const exists = prev.some(h => h.uid === newStory.uid);
+      if (exists) {
+        return prev.map(h => h.uid === newStory.uid ? newStory : h);
       }
-    };
+      return [newStory, ...prev];
+    });
 
-    trySave(updatedHistory);
+    // Persist to IndexedDB
+    try {
+      await saveStoryToDB(newStory);
+    } catch (e) {
+      console.error("Failed to save story to storage", e);
+    }
   };
 
   // Phase 1: Generate Storyboard Structure
-  const handleGenerateStory = async (text: string, selectedComplexity: VisualComplexity) => {
+  const handleGenerateStory = async (text: string, selectedComplexity: VisualComplexity, gender: Gender) => {
     setLoading(true);
     setComplexity(selectedComplexity);
     try {
-      const storyboard = await generateStoryboard(text, selectedComplexity);
+      const storyboard = await generateStoryboard(text, selectedComplexity, gender);
       
       // Initialize image states
       const pagesWithState = storyboard.pages.map(p => ({
@@ -79,7 +59,7 @@ const App: React.FC = () => {
       const fullStory = { ...storyboard, pages: pagesWithState };
       
       setStory(fullStory);
-      saveToHistory(fullStory, history);
+      await saveToHistory(fullStory);
       
       setLoading(false);
 
@@ -110,21 +90,12 @@ const App: React.FC = () => {
           )
         };
 
-        // Update UI and Storage
+        // Update UI state
         setStory(runningStory);
-        // We use function update for history to ensure we don't overwrite concurrent changes (unlikely here but good practice)
-        setHistory(prev => {
-           const newHistory = prev.map(h => h.uid === runningStory.uid ? runningStory : h);
-           // We re-save to local storage here to persist the image
-           // Note: This might be heavy, but ensures if user closes tab, images are saved
-           try {
-             localStorage.setItem(STORAGE_KEY, JSON.stringify(newHistory));
-           } catch(e) {
-             // If this specific save fails, we don't want to crash or delete history yet, just warn
-             console.warn("Could not persist image update to storage (likely quota)");
-           }
-           return newHistory;
-        });
+        setHistory(prev => prev.map(h => h.uid === runningStory.uid ? runningStory : h));
+        
+        // Update Storage asynchronously
+        saveStoryToDB(runningStory).catch(e => console.warn("Background save failed", e));
 
       } catch (err) {
         runningStory = {
@@ -159,7 +130,7 @@ const App: React.FC = () => {
       };
       
       setStory(updatedStory);
-      saveToHistory(updatedStory, history);
+      saveToHistory(updatedStory);
 
     } catch (error) {
        setStory(prev => {
