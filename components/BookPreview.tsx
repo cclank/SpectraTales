@@ -70,14 +70,31 @@ const BookPreview: React.FC<Props> = ({ story, onRegenerateImage, onDownload, on
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center text-slate-300 p-8">
                     {page.is_generating ? (
-                      <div className="flex flex-col items-center">
+                      <div className="flex flex-col items-center z-10">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-fun-sky mb-4"></div>
-                        <span className="text-fun-sky font-bold animate-pulse">Painting...</span>
+                        <span className="text-fun-sky font-bold animate-pulse mb-3">Painting...</span>
+                        <button 
+                           onClick={(e) => {
+                             e.stopPropagation();
+                             onRegenerateImage(page.id);
+                           }}
+                           className="px-3 py-1 bg-white border border-slate-200 rounded-full text-xs font-bold text-slate-400 hover:text-fun-pink hover:border-fun-pink transition-all shadow-sm"
+                        >
+                          Stuck? Retry
+                        </button>
                       </div>
                     ) : (
                       <>
                         <ImageIcon size={64} className="mb-4 opacity-50" />
                         <span className="font-bold">Waiting for magic</span>
+                        {page.error && (
+                           <button 
+                             onClick={() => onRegenerateImage(page.id)}
+                             className="mt-2 text-fun-pink underline font-bold"
+                           >
+                             Retry Failed Image
+                           </button>
+                        )}
                       </>
                     )}
                   </div>

@@ -22,24 +22,23 @@ const App: React.FC = () => {
     loadHistory();
   }, []);
 
-  // Safe storage handler using IndexedDB
-  const saveToHistory = async (newStory: StoryboardData) => {
-    // Optimistically update local state for immediate UI feedback
-    setHistory(prev => {
-      const exists = prev.some(h => h.uid === newStory.uid);
-      if (exists) {
-        return prev.map(h => h.uid === newStory.uid ? newStory : h);
-      }
-      return [newStory, ...prev];
-    });
+  // Automatic Persistence Effect
+  // Whenever 'story' changes, update the history list and save to DB
+  useEffect(() => {
+    if (story) {
+      // 1. Save to DB (Async, fire-and-forget)
+      saveStoryToDB(story).catch(e => console.warn("Auto-save failed", e));
 
-    // Persist to IndexedDB
-    try {
-      await saveStoryToDB(newStory);
-    } catch (e) {
-      console.error("Failed to save story to storage", e);
+      // 2. Update History State
+      setHistory(prev => {
+        const exists = prev.some(h => h.uid === story.uid);
+        if (exists) {
+          return prev.map(h => h.uid === story.uid ? story : h);
+        }
+        return [story, ...prev];
+      });
     }
-  };
+  }, [story]);
 
   // Phase 1: Generate Storyboard Structure
   const handleGenerateStory = async (text: string, selectedComplexity: VisualComplexity, gender: Gender) => {
@@ -59,7 +58,7 @@ const App: React.FC = () => {
       const fullStory = { ...storyboard, pages: pagesWithState };
       
       setStory(fullStory);
-      await saveToHistory(fullStory);
+      // History update will happen automatically via useEffect
       
       setLoading(false);
 
@@ -74,37 +73,36 @@ const App: React.FC = () => {
   };
 
   // Helper to process images one by one
-  const generateImagesSequence = async (currentStory: StoryboardData, comp: VisualComplexity) => {
-    // We need a local ref to the latest story state to chain updates correctly
-    let runningStory = currentStory;
-
-    for (const page of currentStory.pages) {
+  const generateImagesSequence = async (initialStory: StoryboardData, comp: VisualComplexity) => {
+    // Iterate over the pages from the initial story structure
+    for (const page of initialStory.pages) {
       try {
-        const imageUrl = await generatePageImage(page.action_description, currentStory.character_blueprint, comp);
+        const imageUrl = await generatePageImage(page.action_description, initialStory.character_blueprint, comp);
         
-        // Update local ref
-        runningStory = {
-          ...runningStory,
-          pages: runningStory.pages.map(p => 
-            p.id === page.id ? { ...p, image_url: imageUrl, is_generating: false } : p
-          )
-        };
+        // Use functional state update to ensure we don't overwrite user interactions (like retries)
+        setStory(prev => {
+          // Guard: If user switched stories, don't update
+          if (!prev || prev.uid !== initialStory.uid) return prev;
 
-        // Update UI state
-        setStory(runningStory);
-        setHistory(prev => prev.map(h => h.uid === runningStory.uid ? runningStory : h));
-        
-        // Update Storage asynchronously
-        saveStoryToDB(runningStory).catch(e => console.warn("Background save failed", e));
+          return {
+            ...prev,
+            pages: prev.pages.map(p => 
+              p.id === page.id ? { ...p, image_url: imageUrl, is_generating: false } : p
+            )
+          };
+        });
 
       } catch (err) {
-        runningStory = {
-          ...runningStory,
-          pages: runningStory.pages.map(p => 
-            p.id === page.id ? { ...p, is_generating: false, error: "Failed to load image" } : p
-          )
-        };
-        setStory(runningStory);
+        console.error(`Failed to generate image for page ${page.id}`, err);
+        setStory(prev => {
+          if (!prev || prev.uid !== initialStory.uid) return prev;
+          return {
+            ...prev,
+            pages: prev.pages.map(p => 
+              p.id === page.id ? { ...p, is_generating: false, error: "Failed to load image" } : p
+            )
+          };
+        });
       }
     }
   };
@@ -112,27 +110,35 @@ const App: React.FC = () => {
   const handleRegenerateImage = async (pageId: number) => {
     if (!story) return;
 
-    // Set loading state
-    const loadingStory = {
-      ...story,
-      pages: story.pages.map(p => p.id === pageId ? { ...p, is_generating: true, error: undefined } : p)
-    };
-    setStory(loadingStory);
+    // 1. Set Loading State
+    setStory(prev => {
+        if (!prev) return null;
+        return {
+            ...prev,
+            pages: prev.pages.map(p => p.id === pageId ? { ...p, is_generating: true, error: undefined } : p)
+        }
+    });
 
+    // Find the page in the current state
+    // Note: We use the 'story' closure variable here which might be slightly stale if very rapid updates happen,
+    // but the blueprint doesn't change, so it's safe for parameters.
     const page = story.pages.find(p => p.id === pageId);
     if (!page) return;
 
     try {
       const imageUrl = await generatePageImage(page.action_description, story.character_blueprint, complexity);
-      const updatedStory = {
-        ...story,
-        pages: story.pages.map(p => p.id === pageId ? { ...p, image_url: imageUrl, is_generating: false } : p)
-      };
       
-      setStory(updatedStory);
-      saveToHistory(updatedStory);
+      // 2. Set Success State
+      setStory(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            pages: prev.pages.map(p => p.id === pageId ? { ...p, image_url: imageUrl, is_generating: false } : p)
+          };
+      });
 
     } catch (error) {
+       // 3. Set Error State
        setStory(prev => {
         if (!prev) return null;
         return {
