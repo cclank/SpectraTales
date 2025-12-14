@@ -1,3 +1,4 @@
+
 export enum VisualComplexity {
   MINIMAL = 'Minimal', // Solid background, only essential elements
   BALANCED = 'Balanced', // Simple background, moderate detail
@@ -35,6 +36,7 @@ export interface StoryboardData {
   title: string;
   purpose: string;
   character_blueprint: CharacterBlueprint;
+  visual_style_guide: string; // The "Global Prompt" for consistency
   pages: StoryPage[];
 }
 

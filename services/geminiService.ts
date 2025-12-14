@@ -8,7 +8,7 @@ const STORYBOARD_MODEL = "gemini-2.5-flash";
 const IMAGE_MODEL = "gemini-2.5-flash-image"; // Efficient image generation
 
 /**
- * Generates the storyboard structure: Character Blueprint + Page Breakdown.
+ * Generates the storyboard structure: Character Blueprint + Page Breakdown + Master Style Guide.
  */
 export const generateStoryboard = async (
   storyText: string,
@@ -33,15 +33,27 @@ export const generateStoryboard = async (
     Main Character Gender: ${gender}
 
     Task:
-    1. Extract a consistent main character "blueprint" (must be a young ${gender}).
-    2. Break the story into 5-8 distinct pages (scenes).
-    3. For each page, write the simple text for the child to read, and a precise visual description for an AI image generator.
-    4. Ensure specific emotional cues and hand gestures are explicitly described in the action_description.
+    1. Extract a consistent main character "blueprint".
+    2. Create a "Master Visual Style Guide" (Global Prompt). 
+       - MUST include: Art style definition (e.g., "Soft watercolor", "Vibrant digital art"), Character details (exact hair color/style, skin tone, clothing colors/patterns).
+       - MUST NOT include: Specific actions (like "running"), specific settings (like "park"), or specific emotions. It must be neutral enough to apply to ANY scene.
+       - GOAL: This paragraph defines WHO is in the book and HOW it looks, but not WHAT is happening.
+    3. Break the story into 5-8 distinct pages (scenes).
+    4. IMPORTANT: Ensure the FIRST page explicitly visually introduces the Main Character in a clear, neutral pose.
+    5. For each page, generate:
+       - text: Simple sentence for the child.
+       - action_description: A COMPLETE, VIVID STORYBOARD PROMPT.
+         * Start with the CAMERA ANGLE (e.g., "Low angle shot looking up at...", "Extreme close-up of hands...", "Wide shot of the room...").
+         * Describe the LIGHTING (e.g., "Warm sunny afternoon light", "Cool blue night shadows").
+         * Describe the Character's ACTION dynamically (avoid static standing).
+         * VISUALIZE INNER THOUGHTS & EMOTIONS: To help children understand feelings (Theory of Mind), explicitly describe visual metaphors in the scene (e.g., "a thought bubble showing a red truck", "stormy scribbles above head to show frustration", "bright sparkles around hands to show sharing magic", "a heart glowing on the chest").
+         * Make the setting INSPIRING and detailed to spark curiosity (unless complexity is Minimal).
+         * CRITICAL: You MUST vary the camera angles and compositions significantly between pages.
 
     Return JSON matching this schema:
     {
       "title": "Title of story",
-      "purpose": "Educational goal (e.g. Learning to Wait)",
+      "purpose": "Educational goal",
       "character_blueprint": {
         "age": number,
         "hair": "string",
@@ -49,11 +61,12 @@ export const generateStoryboard = async (
         "clothing": "string",
         "expression_style": "string"
       },
+      "visual_style_guide": "The comprehensive global prompt paragraph (Style + Character ONLY)",
       "pages": [
         {
           "id": number,
           "text": "The sentence on the page",
-          "action_description": "Visual description of the character's action and setting"
+          "action_description": "Detailed visual description including camera angle, lighting, action, and setting"
         }
       ]
     }
@@ -81,6 +94,7 @@ export const generateStoryboard = async (
               },
               required: ["age", "hair", "clothing"],
             },
+            visual_style_guide: { type: Type.STRING },
             pages: {
               type: Type.ARRAY,
               items: {
@@ -94,7 +108,7 @@ export const generateStoryboard = async (
               },
             },
           },
-          required: ["title", "character_blueprint", "pages"],
+          required: ["title", "character_blueprint", "visual_style_guide", "pages"],
         },
       },
     });
@@ -116,52 +130,81 @@ export const generateStoryboard = async (
 };
 
 /**
- * Generates a single image for a specific page using the blueprint.
+ * Generates a single image using the Master Style Guide (Global Prompt) AND Visual References.
  */
 export const generatePageImage = async (
   pageDesc: string,
-  blueprint: CharacterBlueprint,
-  complexity: VisualComplexity
+  styleConfig: {
+    globalPrompt?: string, // The new Master Style Guide
+    blueprint?: CharacterBlueprint, // Fallback
+    complexity: VisualComplexity
+  },
+  referenceImageUrls: string[] = []
 ): Promise<string> => {
   
-  // Construct a prompt that enforces consistency
-  const characterDesc = `Child, age ${blueprint.age}, ${blueprint.hair} hair, ${blueprint.skin_tone} skin, wearing ${blueprint.clothing}`;
+  // 1. Construct the Core Prompt
+  let baseDescription = "";
   
-  let stylePrompt = "";
-  switch (complexity) {
-    case VisualComplexity.MINIMAL:
-      stylePrompt = "Flat vector art, white background, no background details, high contrast, thick outlines, clear focal point.";
-      break;
-    case VisualComplexity.BALANCED:
-      stylePrompt = "Soft digital illustration, simple background, clear colors, easy to read emotions, clean lines.";
-      break;
-    case VisualComplexity.RICH:
-      stylePrompt = "Detailed children's book watercolor style, warm lighting, textured background.";
-      break;
+  if (styleConfig.globalPrompt) {
+    baseDescription = `[VISUAL STYLE & CHARACTER ID (IMMUTABLE)]\n${styleConfig.globalPrompt}`;
+  } else if (styleConfig.blueprint) {
+    const bp = styleConfig.blueprint;
+    baseDescription = `[CHARACTER]\nChild, age ${bp.age}, ${bp.hair} hair, ${bp.skin_tone} skin, wearing ${bp.clothing}.`;
   }
 
-  const finalPrompt = `
-    Children's book illustration.
-    Style: ${stylePrompt}
-    Character: ${characterDesc}.
-    Action: ${pageDesc}.
-    Ensure the character matches the description exactly. The expression should be distinct and clear.
+  let finalPrompt = `
+    **TASK**: Generate a consistent, inspiring children's book illustration.
+    
+    ${baseDescription}
+    
+    [CURRENT SCENE SPECIFICATION (PRIORITY FOR COMPOSITION)]
+    SCENE: ${pageDesc}.
+    
+    **GENERATION RULES**:
+    1. **STYLE**: Follow [VISUAL STYLE] for art technique and character colors.
+    2. **COMPOSITION**: Follow [CURRENT SCENE] for the Camera Angle, Pose, and Background. 
+       - IF the scene says "Close-up", you MUST generate a close-up. 
+       - IF the scene says "Wide shot", you MUST generate a wide shot.
+    3. **INNER WORLD**: If described, clearly render visual metaphors for thoughts or emotions (e.g., thought bubbles, stylized worry lines, magical sparkles). These are critical for the child to understand what the character is feeling.
+    4. **INSPIRATION**: The image should spark curiosity. Use interesting lighting and details to make the world feel alive and magical, even for simple social stories.
   `;
+
+  const parts: any[] = [];
+
+  // 2. Add Visual References (The Anchor)
+  referenceImageUrls.forEach((url) => {
+    const match = url.match(/^data:(.+);base64,(.+)$/);
+    if (match) {
+        const mimeType = match[1];
+        const base64Data = match[2];
+        parts.push({
+            inlineData: {
+                mimeType: mimeType,
+                data: base64Data
+            }
+        });
+    }
+  });
+
+  if (referenceImageUrls.length > 0) {
+    finalPrompt += `\n\n[REFERENCE IMAGE HANDLING]
+    - **IDENTITY**: The reference images define EXACTLY what the character looks like. Match the face, hair, and clothes perfectly.
+    - **ART STYLE**: Match the brush strokes, line weight, and color palette of the reference.
+    - **POSE**: DO NOT COPY THE POSE from the reference. The character must be performing the action described in [CURRENT SCENE SPECIFICATION].
+    - **BACKGROUND**: DO NOT COPY THE BACKGROUND. Use the setting described in [CURRENT SCENE SPECIFICATION].`;
+  }
+
+  // Add the text prompt
+  parts.push({ text: finalPrompt });
 
   try {
     const response = await ai.models.generateContent({
       model: IMAGE_MODEL,
       contents: {
-        parts: [{ text: finalPrompt }],
+        parts: parts,
       },
-      config: {
-        // Not using 'imageConfig' for nano banana as per strict instructions, relying on prompt.
-        // But we want aspect ratio. Let's try to set it if supported, or rely on model default (usually 1:1).
-        // gemini-2.5-flash-image generates 1:1 by default.
-      }
     });
 
-    // Extract Base64 image
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData && part.inlineData.data) {
         return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;

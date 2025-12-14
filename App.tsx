@@ -4,7 +4,7 @@ import BookPreview from './components/BookPreview';
 import { generateStoryboard, generatePageImage } from './services/geminiService';
 import { generatePDF } from './utils/pdfGenerator';
 import { StoryboardData, VisualComplexity, Gender } from './types';
-import { Sparkles, Heart } from 'lucide-react';
+import { Sparkles, Github } from 'lucide-react';
 import { getHistoryFromDB, saveStoryToDB } from './services/storageService';
 
 const App: React.FC = () => {
@@ -23,13 +23,9 @@ const App: React.FC = () => {
   }, []);
 
   // Automatic Persistence Effect
-  // Whenever 'story' changes, update the history list and save to DB
   useEffect(() => {
     if (story) {
-      // 1. Save to DB (Async, fire-and-forget)
       saveStoryToDB(story).catch(e => console.warn("Auto-save failed", e));
-
-      // 2. Update History State
       setHistory(prev => {
         const exists = prev.some(h => h.uid === story.uid);
         if (exists) {
@@ -47,19 +43,15 @@ const App: React.FC = () => {
     try {
       const storyboard = await generateStoryboard(text, selectedComplexity, gender);
       
-      // Initialize image states
       const pagesWithState = storyboard.pages.map(p => ({
         ...p,
-        is_generating: true, // Mark as loading initially for auto-start
+        is_generating: true,
         image_url: undefined,
         error: undefined
       }));
       
       const fullStory = { ...storyboard, pages: pagesWithState };
-      
       setStory(fullStory);
-      // History update will happen automatically via useEffect
-      
       setLoading(false);
 
       // Phase 2: Kick off image generation sequentially
@@ -72,18 +64,44 @@ const App: React.FC = () => {
     }
   };
 
-  // Helper to process images one by one
+  // Helper to process images one by one with MULTI-REFERENCE + GLOBAL PROMPT logic
   const generateImagesSequence = async (initialStory: StoryboardData, comp: VisualComplexity) => {
-    // Iterate over the pages from the initial story structure
+    
+    // Local cache of generated images to use as references immediately
+    const generatedImagesMap = new Map<number, string>();
+    const firstPageId = initialStory.pages[0]?.id;
+
     for (const page of initialStory.pages) {
       try {
-        const imageUrl = await generatePageImage(page.action_description, initialStory.character_blueprint, comp);
-        
-        // Use functional state update to ensure we don't overwrite user interactions (like retries)
-        setStory(prev => {
-          // Guard: If user switched stories, don't update
-          if (!prev || prev.uid !== initialStory.uid) return prev;
+        // Build Reference Array
+        const refs: string[] = [];
 
+        // 1. ANCHOR: Always include Page 1 if it exists and we are not currently generating Page 1
+        if (firstPageId !== undefined && generatedImagesMap.has(firstPageId) && page.id !== firstPageId) {
+            refs.push(generatedImagesMap.get(firstPageId)!);
+        }
+
+        // 2. CONTEXT: Include the immediate previous page if it exists
+        const prevPageId = page.id - 1;
+        if (generatedImagesMap.has(prevPageId) && prevPageId !== firstPageId) {
+             refs.push(generatedImagesMap.get(prevPageId)!);
+        }
+
+        const imageUrl = await generatePageImage(
+            page.action_description, 
+            {
+              globalPrompt: initialStory.visual_style_guide,
+              blueprint: initialStory.character_blueprint,
+              complexity: comp
+            },
+            refs
+        );
+        
+        // Store for future references
+        generatedImagesMap.set(page.id, imageUrl);
+
+        setStory(prev => {
+          if (!prev || prev.uid !== initialStory.uid) return prev;
           return {
             ...prev,
             pages: prev.pages.map(p => 
@@ -110,7 +128,6 @@ const App: React.FC = () => {
   const handleRegenerateImage = async (pageId: number) => {
     if (!story) return;
 
-    // 1. Set Loading State
     setStory(prev => {
         if (!prev) return null;
         return {
@@ -119,16 +136,35 @@ const App: React.FC = () => {
         }
     });
 
-    // Find the page in the current state
-    // Note: We use the 'story' closure variable here which might be slightly stale if very rapid updates happen,
-    // but the blueprint doesn't change, so it's safe for parameters.
     const page = story.pages.find(p => p.id === pageId);
     if (!page) return;
 
+    // Collect references from existing state
+    const refs: string[] = [];
+    const firstPage = story.pages[0];
+
+    // 1. Anchor Reference
+    if (firstPage && firstPage.image_url && firstPage.id !== pageId) {
+        refs.push(firstPage.image_url);
+    }
+
+    // 2. Previous Page Reference
+    const prevPage = story.pages.find(p => p.id === pageId - 1);
+    if (prevPage && prevPage.image_url && prevPage.id !== firstPage?.id) {
+        refs.push(prevPage.image_url);
+    }
+
     try {
-      const imageUrl = await generatePageImage(page.action_description, story.character_blueprint, complexity);
+      const imageUrl = await generatePageImage(
+          page.action_description, 
+          {
+            globalPrompt: story.visual_style_guide,
+            blueprint: story.character_blueprint,
+            complexity: complexity
+          },
+          refs
+      );
       
-      // 2. Set Success State
       setStory(prev => {
           if (!prev) return null;
           return {
@@ -138,7 +174,6 @@ const App: React.FC = () => {
       });
 
     } catch (error) {
-       // 3. Set Error State
        setStory(prev => {
         if (!prev) return null;
         return {
@@ -166,7 +201,6 @@ const App: React.FC = () => {
       <header className="bg-white/80 backdrop-blur-md border-b-4 border-fun-yellow sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
           
-          {/* Logo Area */}
           <div className="flex items-center space-x-3 group cursor-default">
             <div className="bg-fun-pink text-white p-3 rounded-2xl shadow-comic transform group-hover:rotate-12 transition-transform">
               <Sparkles size={28} strokeWidth={2.5} />
@@ -181,14 +215,18 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          <div className="hidden md:flex items-center space-x-2 bg-fun-bg border-2 border-fun-yellow px-4 py-2 rounded-full">
-            <Heart size={16} className="text-fun-pink fill-fun-pink animate-pulse" />
-            <span className="text-sm font-bold text-slate-600">Made with Love & AI</span>
-          </div>
+          <a 
+            href="https://github.com/cclank/SpectraTales" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex items-center space-x-2 bg-fun-bg border-2 border-fun-yellow px-4 py-2 rounded-full hover:bg-white hover:shadow-sm transition-all group"
+          >
+            <span className="text-sm font-bold text-slate-600 group-hover:text-fun-pink">Created by 岚叔</span>
+            <Github size={20} className="text-slate-600 group-hover:text-fun-pink" />
+          </a>
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
         {!story ? (
           <StoryInput 
